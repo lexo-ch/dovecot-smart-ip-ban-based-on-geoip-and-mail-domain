@@ -1,3 +1,82 @@
+# Dovecot Multi-Domain IP Banning Script
+
+This script enhances Dovecot email server security by automatically banning IP addresses that attempt to access multiple domains with failed login attempts. It analyzes Dovecot logs, applies country-specific thresholds using GeoIP data, and integrates with fail2ban to block potential brute-force attacks across multiple domains.
+
+## Features
+
+- Multi-domain login attempt analysis
+- GeoIP-based country-specific thresholds
+- fail2ban integration for IP banning
+- Efficient log processing with rotation handling
+- Whitelist support for trusted IPs
+
+## Dependencies
+
+- AWK (pre-installed on most Unix-like systems)
+- fail2ban
+- GeoIP database and mmdblookup
+- CRON (for scheduled execution)
+
+## Setup
+
+1. Install fail2ban:
+
+```
+sudo apt-get update
+sudo apt-get install fail2ban
+```
+
+2. Configure fail2ban:
+Create `/etc/fail2ban/filter.d/empty.conf`:
+
+```
+[Definition]
+failregex =
+ignoreregex =
+```
+
+Create `/etc/fail2ban/jail.d/dovecot-multidomain.conf`:
+
+```
+[dovecot-multidomain]
+enabled = true
+port = 110,143,993,995
+filter = empty
+logpath = /dev/null
+maxretry = 0
+findtime = 86400
+bantime = 86400
+```
+
+3. Restart fail2ban:
+
+```
+sudo systemctl restart fail2ban
+```
+
+4. Set up log rotation by creating `/etc/logrotate.d/dovecot.conf`:
+
+```
+/var/log/dovecot*.log {
+rotate 6
+monthly
+missingok
+notifempty
+compress
+sharedscripts
+delaycompress
+postrotate
+doveadm log reopen
+endscript
+}
+```
+
+5. Set up a CRON job to run the script every 5 minutes:
+
+```
+*/5 * * * * /path/to/dovecot-multidomain-ip-ban
+```
+
 ## Configuration
 
 Adjust the following variables in the script as needed:
@@ -30,3 +109,4 @@ This script is provided as-is, without any warranty or guarantee. Users should u
 
 For a detailed explanation and discussion, please visit our blog post:
 [Dovecot Defender: Multi-Domain IP Banning](https://www.lexo.ch/blog/2024/07/dovecot-defender-multi-domain-ip-banning-geoip-smart-script-catches-brute-force-attacks-across-mail-sender-domains-boost-your-e-mail-security)
+
