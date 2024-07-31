@@ -13,6 +13,7 @@ LOW_THRESHOLD=2  # Minimum number of domains for most countries
 HIGH_THRESHOLD=4  # Minimum number of domains for high-threshold countries
 MAX_AMOUNT_LINES=600000  # Maximum lines to fetch from log files. Lower values improve speed but may miss entries with large logs or longer check periods. Adjust based on log volume and AMOUNTOFHOURSTOCHECK.
 WHITELIST="127.0.0.1 178.22.109.64"  # IPs that should never be banned
+CONSOLE_DEBUG_OUTPUT=1  # Set to 0 to disable console output
 
 # Function to log messages with timestamp and log level
 log_message() {
@@ -46,8 +47,12 @@ ban_ip() {
     local domain_list=$4
     if [[ ! " $WHITELIST " =~ " $ip " ]]; then
         RETVAL=$( fail2ban-client set $JAIL_NAME banip $ip )
-        if [ $RETVAL -eq 1 ]; then
-            echo "Banned the IP [ $ip ]"
+        # Console output for debugging purposes
+        if [ "$CONSOLE_DEBUG_OUTPUT" -eq 1 ]; then
+            # Console output for debugging
+            if [ $RETVAL -eq 1 ]; then
+                echo "BANNED [ ${ip} ], Origin [ ${country} ]"
+            fi
         fi
 
         log_message "SEPA" "==========================================================="
