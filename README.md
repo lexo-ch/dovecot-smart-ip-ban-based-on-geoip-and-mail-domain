@@ -19,7 +19,9 @@ This script enhances Dovecot email server security by automatically banning IP a
 
 ## Setup
 
-1. Install fail2ban:
+### Install fail2ban:
+
+1. Install packages (examples based on Debian or Debian related distros)
 
 ```
 sudo apt-get update
@@ -54,7 +56,9 @@ bantime = 86400
 sudo systemctl restart fail2ban
 ```
 
-4. Set up log rotation by creating `/etc/logrotate.d/dovecot.conf`:
+### Set up log rotation 
+
+1. Create `/etc/logrotate.d/dovecot.conf`:
 
 ```
 /var/log/dovecot*.log {
@@ -71,13 +75,51 @@ endscript
 }
 ```
 
-5. Set up a CRON job to run the script every 5 minutes:
+## Set up a CRON job to run the script every 5 minutes:
+
+Enter crontab as root or the user you want to have the job executed as:
+root: `sudo crontab -e`
+user: `sudo -u username crontab -e`
 
 ```
 */5 * * * * /path/to/dovecot-multidomain-ip-ban
 ```
 
-## Configuration
+## Installing GeoIP Dependencies
+
+1. Install required packages:
+
+```
+sudo apt-get update
+sudo apt-get install mmdb-bin geoipupdate
+```
+
+2. Configure GeoIP update:
+
+Edit `/etc/GeoIP.conf` and add your MaxMind account ID and license key:
+
+```
+AccountID YOUR_ACCOUNT_ID
+LicenseKey YOUR_LICENSE_KEY
+EditionIDs GeoLite2-Country GeoLite2-City
+```
+
+3. Perform initial GeoIP database update:
+
+`sudo geoipupdate`
+
+4. Set up a cron job for weekly updates:
+
+_This is usually handled automatically by your distro. You can check the /etc/cron.d directory for a file called `geoipupdate` or search your CRON files for a geoipupdate entry. Anyway in most cases you won't need to do the next step_
+
+Edit Crontab
+`sudo crontab -e`
+
+```
+47	3	*	*	*   root    test -x /usr/bin/geoipupdate && /usr/bin/geoipupdate
+```
+
+## Script configuration parameters explained
 
 Adjust the following variables in the script as needed:
 
