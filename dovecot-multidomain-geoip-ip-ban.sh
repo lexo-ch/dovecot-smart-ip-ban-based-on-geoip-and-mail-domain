@@ -12,7 +12,7 @@ HIGH_THRESHOLD_COUNTRIES="CH LI CA"  # Countries with higher threshold for banni
 LOW_THRESHOLD=2  # Minimum number of domains for most countries
 HIGH_THRESHOLD=4  # Minimum number of domains for high-threshold countries
 MAX_AMOUNT_LINES=600000  # Maximum lines to fetch from log files. Lower values improve speed but may miss entries with large logs or longer check periods. Adjust based on log volume and AMOUNTOFHOURSTOCHECK.
-WHITELIST="127.0.0.1 178.22.109.64"  # IPs that should never be banned
+WHITELIST="127.0.0.1 178.22.109.64"  # IPs that should never be banned (space separated)
 CONSOLE_DEBUG_OUTPUT=1  # Set to 0 to disable console output
 
 # Function to log messages with timestamp and log level
