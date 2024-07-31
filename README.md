@@ -78,7 +78,9 @@ endscript
 ## Set up a CRON job to run the script every 5 minutes:
 
 Enter crontab as root or the user you want to have the job executed as:
+
 root: `sudo crontab -e`
+
 user: `sudo -u username crontab -e`
 
 ```
