@@ -12,15 +12,16 @@ HIGH_THRESHOLD_COUNTRIES="CH LI CA"  # Countries with higher threshold for banni
 LOW_THRESHOLD=2  # Minimum number of domains for most countries
 HIGH_THRESHOLD=4  # Minimum number of domains for high-threshold countries
 MAX_AMOUNT_LINES=600000  # Maximum lines to fetch from log files. Lower values improve speed but may miss entries with large logs or longer check periods. Adjust based on log volume and AMOUNTOFHOURSTOCHECK.
-WHITELIST="127.0.0.1 178.22.109.64"  # IPs that should never be banned (space separated)
+WHITELIST="127.0.0.1 1.2.3.4"  # IPs that should never be banned
 CONSOLE_DEBUG_OUTPUT=1  # Set to 0 to disable console output
 
 # Function to log messages with timestamp and log level
 log_message() {
     local level=$1
-    local message=$2
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S,%3N')
-    printf "%-23s %-7s %s\n" "$timestamp" "[$level]" "$message" >> "$BAN_LOG"
+    shift
+    local message="$@"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    echo "[$timestamp] [$level] $message" >> "$BAN_LOG"
 }
 
 # Function to get country code from IP using GeoIP database
@@ -36,34 +37,6 @@ get_min_domains() {
         echo $HIGH_THRESHOLD
     else
         echo $LOW_THRESHOLD
-    fi
-}
-
-# Function to ban an IP using Fail2Ban
-ban_ip() {
-    local ip=$1
-    local country=$2
-    local domains=$3
-    local domain_list=$4
-    if [[ ! " $WHITELIST " =~ " $ip " ]]; then
-        RETVAL=$( fail2ban-client set $JAIL_NAME banip $ip )
-        # Console output for debugging purposes
-        if [ "$CONSOLE_DEBUG_OUTPUT" -eq 1 ]; then
-            # Console output for debugging
-            if [ $RETVAL -eq 1 ]; then
-                echo "BANNED [ ${ip} ], Origin [ ${country} ]"
-            fi
-        fi
-
-        log_message "SEPA" "==========================================================="
-        log_message "WARN" "=>   BANNED"
-        log_message "SEPA" "==========================================================="
-        log_message "SEPA" ""
-    else
-        log_message "SEPA" "==========================================================="
-        log_message "INFO" "=>   SKIPPED (whitelisted)"
-        log_message "SEPA" "==========================================================="
-        log_message "SEPA" ""
     fi
 }
 
@@ -102,8 +75,15 @@ log_message "INFO" "Number of unique IPs: $UNIQUE_IP_COUNT"
 # then aggregates the data by IP to count unique domains and find the earliest timestamp
 echo "$FAILED_LOGINS" | while read -r line; do
     ip=$(echo "$line" | grep -oP 'rip=\K[0-9.]+')
-    domain=$(echo "$line" | grep -oP 'user=<[^@]+@\K[^>]+')
+    user=$(echo "$line" | grep -oP 'user=<\K[^>]+')
     timestamp=$(echo "$line" | awk '{print $1, $2}')
+
+    # Check if the user field contains a domain
+    if [[ $user == *@* ]]; then
+        domain=$(echo "$user" | cut -d'@' -f2)
+    else
+        domain="no_domain.tld"
+    fi
 
     if [ -n "$ip" ] && [ -n "$domain" ] && [ -n "$timestamp" ]; then
         echo "$ip $domain $timestamp"
@@ -135,21 +115,27 @@ END {
     country=$(get_country_code "$ip")
     min_domains=$(get_min_domains "$country")
 
-    # Log details for each IP
-    log_message "INFO" "Checking IP: $ip"
-    log_message "INFO" "    Earliest failed auth: $earliest_timestamp"
-    log_message "INFO" "    Country: $country"
-    log_message "INFO" "    Domains: $domains [$domain_list]"
-    log_message "INFO" "    Min required: $min_domains"
+    # Create a single-line log entry for each IP
+    log_entry="IP: $ip | Country: $country | Domains: $domains/$min_domains | Earliest: $earliest_timestamp | List: [$domain_list]"
 
     # Decide whether to ban the IP based on the number of unique domains
     if [ "$domains" -ge "$min_domains" ]; then
-        ban_ip "$ip" "$country" "$domains" "$domain_list"
+        if [[ ! " $WHITELIST " =~ " $ip " ]]; then
+            RETVAL=$(fail2ban-client set $JAIL_NAME banip $ip)
+            ban_status="BANNED"
+        else
+            ban_status="SKIPPED (whitelisted)"
+        fi
     else
-        log_message "SEPA" "==========================================================="
-        log_message "INFO" "=>   SKIPPED (unique domains: $domains < $min_domains)"
-        log_message "SEPA" "==========================================================="
-        log_message "SEPA" ""
+        ban_status="SKIPPED (insufficient domains)"
+    fi
+
+    # Log the consolidated information
+    log_message "INFO" "$ban_status | $log_entry"
+
+    # Console output for debugging purposes
+    if [ "$CONSOLE_DEBUG_OUTPUT" -eq 1 ]; then
+        echo "$ban_status | $log_entry"
     fi
 done
 
