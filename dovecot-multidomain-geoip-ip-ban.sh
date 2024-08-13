@@ -12,8 +12,14 @@ HIGH_THRESHOLD_COUNTRIES="CH LI CA"  # Countries with higher threshold for banni
 LOW_THRESHOLD=2  # Minimum number of domains for most countries
 HIGH_THRESHOLD=4  # Minimum number of domains for high-threshold countries
 MAX_AMOUNT_LINES=600000  # Maximum lines to fetch from log files. Lower values improve speed but may miss entries with large logs or longer check periods. Adjust based on log volume and AMOUNTOFHOURSTOCHECK.
-WHITELIST="127.0.0.1 1.2.3.4"  # IPs that should never be banned
-CONSOLE_DEBUG_OUTPUT=1  # Set to 0 to disable console output
+WHITELIST="127.0.0.1 178.22.109.64"  # IPs that should never be banned
+
+# Console output control:
+# Set CONSOLE_DEBUG_OUTPUT to 1 to enable any console output, 0 to disable all console output
+CONSOLE_DEBUG_OUTPUT=1
+# Set CONSOLE_DEBUG_OUTPUT_VERBOSE to 1 for full console output (all skipped, banned, and already banned messages),
+# or 0 to show only newly banned IPs. This setting has no effect if CONSOLE_DEBUG_OUTPUT is set to 0.
+CONSOLE_DEBUG_OUTPUT_VERBOSE=0
 
 # Function to log messages with timestamp and log level
 log_message() {
@@ -22,6 +28,13 @@ log_message() {
     local message="$@"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[$timestamp] [$level] $message" >> "$BAN_LOG"
+    
+    # Control console output based on debug settings
+    if [ "$CONSOLE_DEBUG_OUTPUT" -eq 1 ]; then
+        if [ "$CONSOLE_DEBUG_OUTPUT_VERBOSE" -eq 1 ] || [[ "$message" == BANNED* ]]; then
+            echo "[$timestamp] [$level] $message"
+        fi
+    fi
 }
 
 # Function to get country code from IP using GeoIP database
@@ -40,10 +53,16 @@ get_min_domains() {
     fi
 }
 
+# Function to check if an IP is already banned
+is_ip_banned() {
+    local ip=$1
+    fail2ban-client status $JAIL_NAME | grep -q "$ip"
+    return $?
+}
+
 log_message "INFO" "Script execution start"
 
 # Build the regex pattern for the last X hours
-# This creates a pattern to match timestamps from the current time back to AMOUNTOFHOURSTOCHECK hours ago
 FAILED_LOGIN_PATTERN=""
 for (( i = ${AMOUNTOFHOURSTOCHECK}; i > 0; i-- )); do
     hour=$(date -d "-${i} hour" '+%Y-%m-%d %H')
@@ -52,7 +71,6 @@ done
 FAILED_LOGIN_PATTERN=${FAILED_LOGIN_PATTERN%|}  # Remove trailing '|'
 
 # Fetch all failed login attempts from the log
-# Handle log rotation by checking if it's the first day of the month and early morning
 current_day=$(date +%d)
 current_hour=$(date +%H)
 if [ "$current_day" -eq 1 ] && [ "$current_hour" -lt "$AMOUNTOFHOURSTOCHECK" ]; then
@@ -71,8 +89,6 @@ log_message "INFO" "Amount of failed logins found: $FAILED_LOGIN_COUNT"
 log_message "INFO" "Number of unique IPs: $UNIQUE_IP_COUNT"
 
 # Process failed logins
-# This section extracts IP, domain, and timestamp from each failed login attempt,
-# then aggregates the data by IP to count unique domains and find the earliest timestamp
 echo "$FAILED_LOGINS" | while read -r line; do
     ip=$(echo "$line" | grep -oP 'rip=\K[0-9.]+')
     user=$(echo "$line" | grep -oP 'user=<\K[^>]+')
@@ -121,21 +137,21 @@ END {
     # Decide whether to ban the IP based on the number of unique domains
     if [ "$domains" -ge "$min_domains" ]; then
         if [[ ! " $WHITELIST " =~ " $ip " ]]; then
-            RETVAL=$(fail2ban-client set $JAIL_NAME banip $ip)
-            ban_status="BANNED"
+            if is_ip_banned "$ip"; then
+                log_message "INFO" "ALREADY BANNED | $log_entry"
+            else
+                RETVAL=$(fail2ban-client set $JAIL_NAME banip $ip)
+                if [ $RETVAL -eq 0 ]; then
+                    log_message "WARN" "BANNED | $log_entry"
+                else
+                    log_message "ERROR" "FAILED TO BAN | $log_entry"
+                fi
+            fi
         else
-            ban_status="SKIPPED (whitelisted)"
+            log_message "INFO" "SKIPPED (whitelisted) | $log_entry"
         fi
     else
-        ban_status="SKIPPED (insufficient domains)"
-    fi
-
-    # Log the consolidated information
-    log_message "INFO" "$ban_status | $log_entry"
-
-    # Console output for debugging purposes
-    if [ "$CONSOLE_DEBUG_OUTPUT" -eq 1 ]; then
-        echo "$ban_status | $log_entry"
+        log_message "INFO" "SKIPPED (insufficient domains) | $log_entry"
     fi
 done
 
