@@ -140,8 +140,9 @@ END {
             if is_ip_banned "$ip"; then
                 log_message "INFO" "ALREADY BANNED | $log_entry"
             else
-                RETVAL=$(fail2ban-client set $JAIL_NAME banip $ip)
-                if [ $RETVAL -eq 0 ]; then
+                fail2ban-client set $JAIL_NAME banip $ip
+                # Check if the IP is now banned
+                if is_ip_banned "$ip"; then
                     log_message "WARN" "BANNED | $log_entry"
                 else
                     log_message "ERROR" "FAILED TO BAN | $log_entry"
@@ -153,6 +154,7 @@ END {
     else
         log_message "INFO" "SKIPPED (insufficient domains) | $log_entry"
     fi
+
 done
 
 log_message "INFO" "Script execution completed"
