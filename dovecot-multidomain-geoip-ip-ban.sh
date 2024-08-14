@@ -21,17 +21,17 @@ CONSOLE_DEBUG_OUTPUT=1
 # or 0 to show only newly banned IPs. This setting has no effect if CONSOLE_DEBUG_OUTPUT is set to 0.
 CONSOLE_DEBUG_OUTPUT_VERBOSE=0
 
-# Function to log messages with timestamp and log level
+# Function to log messages with timestamp and log level as well as taking care of CLI debug output
 log_message() {
     local level=$1
     shift
     local message="$@"
     local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
     echo "[$timestamp] [$level] $message" >> "$BAN_LOG"
-    
+
     # Control console output based on debug settings
     if [ "$CONSOLE_DEBUG_OUTPUT" -eq 1 ]; then
-        if [ "$CONSOLE_DEBUG_OUTPUT_VERBOSE" -eq 1 ] || [[ "$message" == BANNED* ]]; then
+        if [ "$CONSOLE_DEBUG_OUTPUT_VERBOSE" -eq 1 ] || [[ "$message" == BANNED* ]] || [[ "$level" == "ERROR" ]]; then
             echo "[$timestamp] [$level] $message"
         fi
     fi
@@ -140,12 +140,12 @@ END {
             if is_ip_banned "$ip"; then
                 log_message "INFO" "ALREADY BANNED | $log_entry"
             else
-                fail2ban-client set $JAIL_NAME banip $ip
-                # Check if the IP is now banned
-                if is_ip_banned "$ip"; then
+                RETVAL=$(fail2ban-client set $JAIL_NAME banip $ip 2>&1)
+                if [ "$RETVAL" = "1" ]; then
                     log_message "WARN" "BANNED | $log_entry"
                 else
                     log_message "ERROR" "FAILED TO BAN | $log_entry"
+                    log_message "DEBUG" "fail2ban-client output: $RETVAL"
                 fi
             fi
         else
@@ -154,7 +154,6 @@ END {
     else
         log_message "INFO" "SKIPPED (insufficient domains) | $log_entry"
     fi
-
 done
 
 log_message "INFO" "Script execution completed"
