@@ -8,11 +8,11 @@ AMOUNTOFHOURSTOCHECK=24  # Number of hours to look back for failed logins
 JAIL_NAME="dovecot-multidomain"  # Fail2Ban jail name
 GEOIP_BIN=$(which mmdblookup)  # Path to GeoIP lookup binary
 COUNTRY_DB="/var/lib/GeoIP/GeoLite2-Country.mmdb"  # GeoIP database file
-HIGH_THRESHOLD_COUNTRIES="CH LI CA"  # Countries with higher threshold for banning
+HIGH_THRESHOLD_COUNTRIES="US DE"  # Countries with higher threshold for banning
 LOW_THRESHOLD=2  # Minimum number of domains for most countries
 HIGH_THRESHOLD=4  # Minimum number of domains for high-threshold countries
 MAX_AMOUNT_LINES=600000  # Maximum lines to fetch from log files. Lower values improve speed but may miss entries with large logs or longer check periods. Adjust based on log volume and AMOUNTOFHOURSTOCHECK.
-WHITELIST="127.0.0.1 178.22.109.64"  # IPs that should never be banned
+WHITELIST="127.0.0.1 1.2.3.4"  # IPs that should never be banned
 
 # Console output control:
 # Set CONSOLE_DEBUG_OUTPUT to 1 to enable any console output, 0 to disable all console output
@@ -122,8 +122,16 @@ END {
         printf "%s|%s\n", domain_list, timestamp[i]
     }
 }' | while read -r line; do
-    # Extract information for each IP
+# Extract IP first
     ip=$(echo "$line" | cut -d':' -f1)
+
+    # Check whitelist immediately
+    if [[ " $WHITELIST " =~ " $ip " ]]; then
+        log_message "INFO" "SKIPPED (whitelisted) | IP: $ip"
+        continue
+    fi
+
+    # Only process non-whitelisted IPs
     domain_info=$(echo "$line" | cut -d':' -f2-)
     domain_list=$(echo "$domain_info" | cut -d'|' -f1 | sed 's/^ *//' | sed 's/ *$//')
     earliest_timestamp=$(echo "$domain_info" | cut -d'|' -f2)
@@ -136,20 +144,16 @@ END {
 
     # Decide whether to ban the IP based on the number of unique domains
     if [ "$domains" -ge "$min_domains" ]; then
-        if [[ ! " $WHITELIST " =~ " $ip " ]]; then
-            if is_ip_banned "$ip"; then
-                log_message "INFO" "ALREADY BANNED | $log_entry"
-            else
-                RETVAL=$(fail2ban-client set $JAIL_NAME banip $ip 2>&1)
-                if [ "$RETVAL" = "1" ]; then
-                    log_message "WARN" "BANNED | $log_entry"
-                else
-                    log_message "ERROR" "FAILED TO BAN | $log_entry"
-                    log_message "DEBUG" "fail2ban-client output: $RETVAL"
-                fi
-            fi
+        if is_ip_banned "$ip"; then
+            log_message "INFO" "ALREADY BANNED | $log_entry"
         else
-            log_message "INFO" "SKIPPED (whitelisted) | $log_entry"
+            RETVAL=$(fail2ban-client set $JAIL_NAME banip $ip 2>&1)
+            if [ "$RETVAL" = "1" ]; then
+                log_message "WARN" "BANNED | $log_entry"
+            else
+                log_message "ERROR" "FAILED TO BAN | $log_entry"
+                log_message "DEBUG" "fail2ban-client output: $RETVAL"
+            fi
         fi
     else
         log_message "INFO" "SKIPPED (insufficient domains) | $log_entry"
